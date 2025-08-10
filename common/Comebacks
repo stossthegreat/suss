@@ -1,0 +1,357 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../utils/colors.dart';
+import '../../utils/constants.dart';
+import '../../services/api_service.dart';
+import '../../models/whisperfire_models.dart';
+import '../common/custom_text_field.dart';
+import '../common/gradient_button.dart';
+import '../common/outlined_button.dart';
+import '../common/premium_output_card.dart';
+
+class ComebacksTab extends StatefulWidget {
+  const ComebacksTab({super.key});
+
+  @override
+  State<ComebacksTab> createState() => _ComebacksTabState();
+}
+
+class _ComebacksTabState extends State<ComebacksTab> {
+  final TextEditingController _textController = TextEditingController();
+  final TextEditingController _subjectNameController = TextEditingController();
+  String _selectedTone = 'savage';
+  String _selectedRelationship = 'Partner';
+  String _selectedContentType = 'dm'; // backend expects dm|bio|story|post; comebacks: keep 'dm'
+  bool _isGenerating = false;
+  WhisperfireResponse? _analysis;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _subjectNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generateComeback() async {
+    if (_textController.text.trim().isEmpty) return;
+
+    setState(() {
+      _isGenerating = true;
+      _analysis = null;
+    });
+
+    try {
+      final result = await ApiService.analyzeMessageWhisperfire(
+        inputText: _textController.text.trim(),
+        contentType: _selectedContentType,
+        analysisGoal: 'comeback',
+        tone: _selectedTone,
+        relationship: _selectedRelationship,
+        subjectName: _subjectNameController.text.trim().isEmpty
+            ? null
+            : _subjectNameController.text.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _analysis = result;
+        _isGenerating = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Comeback generation failed: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _share() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Share feature coming soon!'),
+        backgroundColor: AppColors.primaryPink,
+      ),
+    );
+  }
+
+  void _copyJSON() {
+    if (_analysis?.data == null) return;
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(_analysis!.data!.toJson());
+    Clipboard.setData(ClipboardData(text: jsonStr));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('JSON copied'),
+        backgroundColor: AppColors.primaryPink,
+      ),
+    );
+  }
+
+  void _downloadJSON() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Download ready (browser will handle)'),
+        backgroundColor: AppColors.primaryPink,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasText = _textController.text.trim().isNotEmpty;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 24),
+
+          CustomTextField(
+            controller: _textController,
+            placeholder: 'Paste the message you need a comeback for...',
+            maxLines: 6,
+            padding: const EdgeInsets.all(16),
+          ),
+          const SizedBox(height: 24),
+
+          _buildSubjectNameField(),
+          const SizedBox(height: 20),
+
+          _buildToneSelector(),
+          const SizedBox(height: 20),
+
+          _buildRelationshipSelector(),
+          const SizedBox(height: 20),
+
+          _buildContentTypeSelector(),
+          const SizedBox(height: 24),
+
+          GradientButton(
+            text: _isGenerating ? 'Generating viral comeback...' : 'Generate Comeback',
+            isLoading: _isGenerating,
+            disabled: !hasText,
+            icon: _isGenerating ? null : const Icon(Icons.auto_awesome, color: Colors.white),
+            width: double.infinity,
+            height: 56,
+            gradient: const LinearGradient(
+              colors: [AppColors.primaryPink, AppColors.primaryPurple],
+            ),
+            onPressed: _generateComeback,
+          ),
+          const SizedBox(height: 24),
+
+          if (_analysis?.data != null)
+            PremiumOutputCard(
+              analysis: _analysis!,
+              tab: 'comeback',
+              onShare: _share,
+              onCopyJSON: _copyJSON,
+              onDownloadJSON: _downloadJSON,
+            ),
+
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.flash_on, color: AppColors.primaryPink, size: 32),
+            const SizedBox(width: 8),
+            ShaderMask(
+              shaderCallback: (bounds) => AppColors.primaryGradient.createShader(bounds),
+              child: const Text(
+                'Comeback Generator',
+                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Generate viral comebacks that shut down manipulation',
+          style: TextStyle(color: AppColors.textGray400, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubjectNameField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('SUBJECT NAME (OPTIONAL)',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        CustomTextField(
+          controller: _subjectNameController,
+          placeholder: 'Enter the person\'s name...',
+          maxLines: 1,
+          padding: const EdgeInsets.all(16),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToneSelector() {
+    final tones = [
+      {'id': 'savage', 'label': '🔥 Savage', 'desc': 'No mercy'},
+      {'id': 'soft', 'label': '🕊️ Soft', 'desc': 'Gentle approach'},
+      {'id': 'clinical', 'label': '🧠 Clinical', 'desc': 'Analytical & precise'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ANALYSIS TONE',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Row(
+          children: tones.map((tone) {
+            final selected = _selectedTone == tone['id'];
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: CustomOutlinedButton(
+                  text: '',
+                  isSelected: selected,
+                  selectedColor: AppColors.primaryPink,
+                  onPressed: () => setState(() => _selectedTone = tone['id']!),
+                  child: Column(
+                    children: [
+                      Text(
+                        tone['label']!,
+                        style: TextStyle(
+                          color: selected ? AppColors.primaryPink : AppColors.textGray400,
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        tone['desc']!,
+                        style: TextStyle(
+                          color: (selected ? AppColors.primaryPink : AppColors.textGray400).withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRelationshipSelector() {
+    final relationships = [
+      {'id': 'Partner', 'label': '💕 Partner', 'desc': 'Romantic relationships'},
+      {'id': 'Ex', 'label': '💔 Ex', 'desc': 'Former partners'},
+      {'id': 'Date', 'label': '💘 Date', 'desc': 'Dating relationships'},
+      {'id': 'Friend', 'label': '👥 Friend', 'desc': 'Friendships'},
+      {'id': 'Coworker', 'label': '💼 Coworker', 'desc': 'Work relationships'},
+      {'id': 'Family', 'label': '👨‍👩‍👧‍👦 Family', 'desc': 'Family dynamics'},
+      {'id': 'Roommate', 'label': '🏠 Roommate', 'desc': 'Living together'},
+      {'id': 'Stranger', 'label': '❓ Stranger', 'desc': 'Unknown people'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('RELATIONSHIP CONTEXT',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundGray800,
+            borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
+            border: Border.all(color: AppColors.borderGray600),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedRelationship,
+              isExpanded: true,
+              dropdownColor: AppColors.backgroundGray800,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              items: relationships.map((rel) {
+                return DropdownMenuItem<String>(
+                  value: rel['id']!,
+                  child: Row(
+                    children: [
+                      Text(rel['label']!),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          rel['desc']!,
+                          style: TextStyle(color: AppColors.textGray400, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) => setState(() => _selectedRelationship = value!),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentTypeSelector() {
+    // keep UI simple; always 'dm' for comebacks
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('CONTENT TYPE',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: CustomOutlinedButton(
+                text: '',
+                isSelected: true,
+                selectedColor: AppColors.primaryPurple,
+                onPressed: () {},
+                child: Column(
+                  children: [
+                    Text(
+                      'Direct Message',
+                      style: TextStyle(color: AppColors.primaryPurple, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'For one-on-one conversations',
+                      style: TextStyle(color: AppColors.primaryPurple.withOpacity(0.7), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
