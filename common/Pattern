@@ -1,0 +1,410 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../utils/colors.dart';
+import '../../utils/constants.dart';
+import '../../services/api_service.dart';
+import '../../models/whisperfire_models.dart';
+import '../common/custom_text_field.dart';
+import '../common/outlined_button.dart';
+import '../common/gradient_button.dart';
+import '../common/premium_output_card.dart';
+
+class PatternTab extends StatefulWidget {
+  const PatternTab({super.key});
+
+  @override
+  State<PatternTab> createState() => _PatternTabState();
+}
+
+class _PatternTabState extends State<PatternTab> {
+  final List<TextEditingController> _messageControllers = [TextEditingController()];
+  final TextEditingController _subjectNameController = TextEditingController();
+
+  String _selectedRelationship = 'Partner';
+  String _selectedTone = 'clinical';
+
+  // IMPORTANT: separate content type (for backend) vs output mode (UI styling)
+  String _selectedContentType = 'dm'; // backend: dm|bio|story|post
+  String _selectedOutputMode = 'Intel'; // UI: Intel|Narrative|Roast
+
+  bool _isAnalyzing = false;
+  WhisperfireResponse? _analysis;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageControllers[0].addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _subjectNameController.dispose();
+    for (final c in _messageControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _runPatternAnalysis() async {
+    final messages = _messageControllers
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    if (messages.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pattern analysis requires at least 2 messages'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isAnalyzing = true;
+      _analysis = null;
+    });
+
+    try {
+      final result = await ApiService.analyzeMessageWhisperfire(
+        inputText: messages.join('\n'),
+        contentType: _selectedContentType,
+        analysisGoal: 'pattern',
+        tone: _selectedTone,
+        relationship: _selectedRelationship,
+        subjectName: _subjectNameController.text.trim().isEmpty
+            ? null
+            : _subjectNameController.text.trim(),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _analysis = result;
+        _isAnalyzing = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isAnalyzing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Pattern analysis failed: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _addMessage() {
+    if (_messageControllers.length >= 5) return;
+    setState(() {
+      final c = TextEditingController();
+      c.addListener(() => setState(() {}));
+      _messageControllers.add(c);
+    });
+  }
+
+  int get _validCount =>
+      _messageControllers.where((c) => c.text.trim().isNotEmpty).length;
+
+  void _share() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: const Text('Share coming soon!'), backgroundColor: AppColors.primaryPink),
+    );
+  }
+
+  void _copyJSON() {
+    if (_analysis?.data == null) return;
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(_analysis!.data!.toJson());
+    Clipboard.setData(ClipboardData(text: jsonStr));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: const Text('JSON copied'), backgroundColor: AppColors.primaryPink),
+    );
+  }
+
+  void _downloadJSON() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: const Text('Download ready'), backgroundColor: AppColors.primaryPink),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 24),
+
+          _buildSubjectNameField(),
+          const SizedBox(height: 20),
+
+          _buildRelationshipSelector(),
+          const SizedBox(height: 20),
+
+          _buildToneSelector(),
+          const SizedBox(height: 20),
+
+          _buildMessagesSection(),
+          const SizedBox(height: 24),
+
+          GradientButton(
+            text: _isAnalyzing ? 'Profiling behavioral patterns...' : 'Analyze Communication Pattern',
+            isLoading: _isAnalyzing,
+            disabled: _validCount < 2,
+            icon: _isAnalyzing ? null : const Icon(Icons.psychology, color: Colors.white),
+            width: double.infinity,
+            height: 56,
+            gradient: const LinearGradient(colors: [AppColors.primaryPurple, AppColors.primaryPink]),
+            onPressed: _runPatternAnalysis,
+          ),
+          const SizedBox(height: 24),
+
+          if (_analysis?.data != null)
+            PremiumOutputCard(
+              analysis: _analysis!,
+              tab: 'pattern',
+              onShare: _share,
+              onCopyJSON: _copyJSON,
+              onDownloadJSON: _downloadJSON,
+            ),
+
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.psychology, color: AppColors.primaryPurple, size: 32),
+            const SizedBox(width: 8),
+            ShaderMask(
+              shaderCallback: (bounds) => LinearGradient(
+                colors: [AppColors.primaryPurple, AppColors.primaryPink],
+              ).createShader(bounds),
+              child: const Text(
+                'PATTERN.AI',
+                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'High-stakes behavioral profiler detecting manipulation loops',
+          style: TextStyle(color: AppColors.textGray400, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubjectNameField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('NAME THIS PERSON (OPTIONAL)',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        CustomTextField(
+          controller: _subjectNameController,
+          placeholder: 'e.g., "Toxic Ex", "Confusing Coworker"',
+          padding: const EdgeInsets.all(12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRelationshipSelector() {
+    final relationships = [
+      {'id': 'Partner', 'label': '💕 Partner', 'desc': 'Romantic relationships'},
+      {'id': 'Ex', 'label': '💔 Ex', 'desc': 'Former partners'},
+      {'id': 'Date', 'label': '💘 Date', 'desc': 'Dating situations'},
+      {'id': 'Friend', 'label': '👥 Friend', 'desc': 'Friendships'},
+      {'id': 'Coworker', 'label': '💼 Coworker', 'desc': 'Work relationships'},
+      {'id': 'Family', 'label': '👨‍👩‍👧‍👦 Family', 'desc': 'Family dynamics'},
+      {'id': 'Roommate', 'label': '🏡 Roommate', 'desc': 'Living situations'},
+      {'id': 'Stranger', 'label': '❓ Stranger', 'desc': 'Unknown people'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('RELATIONSHIP CONTEXT',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundGray800,
+            borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
+            border: Border.all(color: AppColors.borderGray600),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedRelationship,
+              isExpanded: true,
+              dropdownColor: AppColors.backgroundGray800,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              items: relationships.map((rel) {
+                return DropdownMenuItem<String>(
+                  value: rel['id']!,
+                  child: Row(
+                    children: [
+                      Text(rel['label']!),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(rel['desc']!, style: TextStyle(color: AppColors.textGray400, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) => setState(() => _selectedRelationship = value!),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToneSelector() {
+    final tones = [
+      {'id': 'savage', 'label': '🔥 Savage', 'desc': 'No mercy'},
+      {'id': 'soft', 'label': '🕊️ Soft', 'desc': 'Gentle approach'},
+      {'id': 'clinical', 'label': '🧠 Clinical', 'desc': 'Analytical & precise'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ANALYSIS TONE',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Row(
+          children: tones.map((tone) {
+            final selected = _selectedTone == tone['id'];
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: CustomOutlinedButton(
+                  text: '',
+                  isSelected: selected,
+                  selectedColor: AppColors.primaryPink,
+                  onPressed: () => setState(() => _selectedTone = tone['id']!),
+                  child: Column(
+                    children: [
+                      Text(
+                        tone['label']!,
+                        style: TextStyle(
+                          color: selected ? AppColors.primaryPink : AppColors.textGray400,
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        tone['desc']!,
+                        style: TextStyle(
+                          color: (selected ? AppColors.primaryPink : AppColors.textGray400).withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessagesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('MESSAGE CONVERSATION',
+            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundGray800,
+            borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
+            border: Border.all(color: AppColors.borderGray600),
+          ),
+          child: Column(
+            children: [
+              ..._messageControllers.asMap().entries.map((entry) {
+                final index = entry.key;
+                final controller = entry.value;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: CustomTextField(
+                          controller: controller,
+                          placeholder: 'Message ${index + 1}',
+                          onChanged: (v) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (_messageControllers.length > 1)
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              _messageControllers.removeAt(index);
+                            });
+                          },
+                          icon: Icon(Icons.remove_circle_outline, color: AppColors.dangerRed, size: 20),
+                        ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 8),
+              if (_messageControllers.length < 5)
+                GestureDetector(
+                  onTap: _addMessage,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.borderGray600, width: 2),
+                      borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('+', style: TextStyle(color: AppColors.textGray400, fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Text('Add Message',
+                            style: TextStyle(color: AppColors.textGray400, fontSize: 14, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '$_validCount of ${_messageControllers.length} messages filled',
+                  style: TextStyle(color: AppColors.textGray500, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
