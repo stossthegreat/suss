@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../models/whisperfire_models.dart';
+
 import '../common/custom_text_field.dart';
 import '../common/gradient_button.dart';
 import '../common/outlined_button.dart';
@@ -22,7 +24,7 @@ class _ComebacksTabState extends State<ComebacksTab> {
   final TextEditingController _subjectNameController = TextEditingController();
   String _selectedTone = 'savage';
   String _selectedRelationship = 'Partner';
-  String _selectedContentType = 'dm'; // backend expects dm|bio|story|post; comebacks: keep 'dm'
+  String _selectedContentType = 'dm';
   bool _isGenerating = false;
   WhisperfireResponse? _analysis;
 
@@ -76,36 +78,6 @@ class _ComebacksTabState extends State<ComebacksTab> {
     }
   }
 
-  void _share() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Share feature coming soon!'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
-  void _copyJSON() {
-    if (_analysis?.data == null) return;
-    final jsonStr = const JsonEncoder.withIndent('  ').convert(_analysis!.data!.toJson());
-    Clipboard.setData(ClipboardData(text: jsonStr));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('JSON copied'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
-  void _downloadJSON() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Download ready (browser will handle)'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final hasText = _textController.text.trim().isNotEmpty;
@@ -117,6 +89,7 @@ class _ComebacksTabState extends State<ComebacksTab> {
           _buildHeader(),
           const SizedBox(height: 24),
 
+          // message input
           CustomTextField(
             controller: _textController,
             placeholder: 'Paste the message you need a comeback for...',
@@ -151,13 +124,30 @@ class _ComebacksTabState extends State<ComebacksTab> {
           ),
           const SizedBox(height: 24),
 
+          // results (premium)
           if (_analysis?.data != null)
             PremiumOutputCard(
-              analysis: _analysis!,
               tab: 'comeback',
-              onShare: _share,
-              onCopyJSON: _copyJSON,
-              onDownloadJSON: _downloadJSON,
+              data: _analysis!.data!,
+              onShare: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Share coming soon!')),
+                );
+              },
+              onCopyJSON: () {
+                final jsonStr = jsonEncode(_analysis!.toJson());
+                Clipboard.setData(ClipboardData(text: jsonStr));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('JSON copied')),
+                );
+              },
+              onDownloadJSON: () {
+                final jsonStr = jsonEncode(_analysis!.toJson());
+                Clipboard.setData(ClipboardData(text: jsonStr));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Downloaded (copied for now)')),
+                );
+              },
             ),
 
           const SizedBox(height: 100),
@@ -198,7 +188,12 @@ class _ComebacksTabState extends State<ComebacksTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('SUBJECT NAME (OPTIONAL)',
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
         const SizedBox(height: 12),
         CustomTextField(
           controller: _subjectNameController,
@@ -221,42 +216,54 @@ class _ComebacksTabState extends State<ComebacksTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('ANALYSIS TONE',
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
         const SizedBox(height: 12),
         Row(
-          children: tones.map((tone) {
-            final selected = _selectedTone == tone['id'];
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: CustomOutlinedButton(
-                  text: '',
-                  isSelected: selected,
-                  selectedColor: AppColors.primaryPink,
-                  onPressed: () => setState(() => _selectedTone = tone['id']!),
-                  child: Column(
-                    children: [
-                      Text(
-                        tone['label']!,
-                        style: TextStyle(
-                          color: selected ? AppColors.primaryPink : AppColors.textGray400,
-                          fontSize: 14, fontWeight: FontWeight.w600,
-                        ),
+          children: tones
+              .map(
+                (tone) => Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: CustomOutlinedButton(
+                      text: '',
+                      isSelected: _selectedTone == tone['id'],
+                      selectedColor: AppColors.primaryPink,
+                      onPressed: () => setState(() => _selectedTone = tone['id']!),
+                      child: Column(
+                        children: [
+                          Text(
+                            tone['label']!,
+                            style: TextStyle(
+                              color: _selectedTone == tone['id']
+                                  ? AppColors.primaryPink
+                                  : AppColors.textGray400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tone['desc']!,
+                            style: TextStyle(
+                              color: (_selectedTone == tone['id']
+                                      ? AppColors.primaryPink
+                                      : AppColors.textGray400)
+                                  .withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        tone['desc']!,
-                        style: TextStyle(
-                          color: (selected ? AppColors.primaryPink : AppColors.textGray400).withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          }).toList(),
+              )
+              .toList(),
         ),
       ],
     );
@@ -278,7 +285,12 @@ class _ComebacksTabState extends State<ComebacksTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('RELATIONSHIP CONTEXT',
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -293,24 +305,24 @@ class _ComebacksTabState extends State<ComebacksTab> {
               isExpanded: true,
               dropdownColor: AppColors.backgroundGray800,
               style: const TextStyle(color: Colors.white, fontSize: 16),
-              items: relationships.map((rel) {
-                return DropdownMenuItem<String>(
-                  value: rel['id']!,
-                  child: Row(
-                    children: [
-                      Text(rel['label']!),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          rel['desc']!,
-                          style: TextStyle(color: AppColors.textGray400, fontSize: 12),
-                        ),
+              items: relationships
+                  .map(
+                    (rel) => DropdownMenuItem<String>(
+                      value: rel['id']!,
+                      child: Row(
+                        children: [
+                          Text(rel['label']!),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(rel['desc']!,
+                                style: TextStyle(color: AppColors.textGray400, fontSize: 12)),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) => setState(() => _selectedRelationship = value!),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedRelationship = v ?? _selectedRelationship),
             ),
           ),
         ),
@@ -319,37 +331,64 @@ class _ComebacksTabState extends State<ComebacksTab> {
   }
 
   Widget _buildContentTypeSelector() {
-    // keep UI simple; always 'dm' for comebacks
+    final contentTypes = [
+      {'id': 'dm', 'label': 'Direct Message', 'desc': 'For one-on-one conversations'},
+      {'id': 'group', 'label': 'Group Chat', 'desc': 'For conversations with multiple people'},
+      {'id': 'public', 'label': 'Public Platform', 'desc': 'For posts on social media'},
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('CONTENT TYPE',
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
         const SizedBox(height: 12),
         Row(
-          children: [
-            Expanded(
-              child: CustomOutlinedButton(
-                text: '',
-                isSelected: true,
-                selectedColor: AppColors.primaryPurple,
-                onPressed: () {},
-                child: Column(
-                  children: [
-                    Text(
-                      'Direct Message',
-                      style: TextStyle(color: AppColors.primaryPurple, fontSize: 14, fontWeight: FontWeight.w600),
+          children: contentTypes
+              .map(
+                (type) => Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: CustomOutlinedButton(
+                      text: '',
+                      isSelected: _selectedContentType == type['id'],
+                      selectedColor: AppColors.primaryPurple,
+                      onPressed: () => setState(() => _selectedContentType = type['id']!),
+                      child: Column(
+                        children: [
+                          Text(
+                            type['label']!,
+                            style: TextStyle(
+                              color: _selectedContentType == type['id']
+                                  ? AppColors.primaryPurple
+                                  : AppColors.textGray400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            type['desc']!,
+                            style: TextStyle(
+                              color: (_selectedContentType == type['id']
+                                      ? AppColors.primaryPurple
+                                      : AppColors.textGray400)
+                                  .withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'For one-on-one conversations',
-                      style: TextStyle(color: AppColors.primaryPurple.withOpacity(0.7), fontSize: 12),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ],
+              )
+              .toList(),
         ),
       ],
     );
