@@ -1,12 +1,16 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import '../../utils/colors.dart';
 import '../../utils/constants.dart';
 import '../../services/api_service.dart';
 import '../../models/whisperfire_models.dart';
+
 import '../common/custom_text_field.dart';
 import '../common/gradient_button.dart';
-import '../common/premium_output_card.dart';
+import '../common/outlined_button.dart';
+
 
 class ScanTab extends StatefulWidget {
   const ScanTab({super.key});
@@ -16,24 +20,31 @@ class ScanTab extends StatefulWidget {
 }
 
 class _ScanTabState extends State<ScanTab> {
-  final TextEditingController _textController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
   final TextEditingController _subjectNameController = TextEditingController();
 
-  String _selectedTone = 'clinical';
   String _selectedRelationship = 'Partner';
-  String _selectedContentType = 'dm'; // dm | bio | story | post
+  String _selectedTone = 'clinical';
+  String _selectedContentType = 'dm';
+
   bool _isAnalyzing = false;
   WhisperfireResponse? _analysis;
 
   @override
+  void initState() {
+    super.initState();
+    _messageController.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
-    _textController.dispose();
+    _messageController.dispose();
     _subjectNameController.dispose();
     super.dispose();
   }
 
   Future<void> _runScan() async {
-    final text = _textController.text.trim();
+    final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
     setState(() {
@@ -62,48 +73,14 @@ class _ScanTabState extends State<ScanTab> {
       if (!mounted) return;
       setState(() => _isAnalyzing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Scan failed: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
-  void _copyJSON() {
-    if (_analysis?.data == null) return;
-    final jsonStr = const JsonEncoder.withIndent('  ').convert(_analysis!.data!.toJson());
-    Clipboard.setData(ClipboardData(text: jsonStr));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('JSON copied to clipboard'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
-  void _downloadJSON() {
-    // for web builds, ApiService already uses dart:html; here we just show a toast
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Download ready (handled by browser)'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
-  void _share() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Share coming soon'),
-        backgroundColor: AppColors.primaryPink,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final hasText = _textController.text.trim().isNotEmpty;
+    final hasText = _messageController.text.trim().isNotEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -112,27 +89,37 @@ class _ScanTabState extends State<ScanTab> {
           _buildHeader(),
           const SizedBox(height: 24),
 
-          _buildRelationshipToneRow(),
-          const SizedBox(height: 16),
-
-          _buildContentTypeSelector(),
-          const SizedBox(height: 16),
-
-          _buildSubjectName(),
-          const SizedBox(height: 16),
-
+          // message input
           CustomTextField(
-            controller: _textController,
+            controller: _messageController,
             placeholder: 'Paste the message you want to analyze...',
             maxLines: 6,
             padding: const EdgeInsets.all(16),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
+          // subject name (optional)
+          _buildSubjectNameField(),
+          const SizedBox(height: 20),
+
+          // relationship
+          _buildRelationshipSelector(),
+          const SizedBox(height: 20),
+
+          // tone
+          _buildToneSelector(),
+          const SizedBox(height: 20),
+
+          // content type
+          _buildContentTypeSelector(),
+          const SizedBox(height: 24),
+
+          // analyze
           GradientButton(
             text: _isAnalyzing ? 'Analyzing...' : 'Analyze Message',
             isLoading: _isAnalyzing,
             disabled: !hasText,
+            icon: _isAnalyzing ? null : const Icon(Icons.search, color: Colors.white),
             width: double.infinity,
             height: 56,
             gradient: const LinearGradient(
@@ -140,16 +127,32 @@ class _ScanTabState extends State<ScanTab> {
             ),
             onPressed: _runScan,
           ),
-
           const SizedBox(height: 24),
 
+          // results (premium)
           if (_analysis?.data != null)
             PremiumOutputCard(
-              analysis: _analysis!,
               tab: 'scan',
-              onShare: _share,
-              onCopyJSON: _copyJSON,
-              onDownloadJSON: _downloadJSON,
+              data: _analysis!.data!,
+              onShare: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Share coming soon!')),
+                );
+              },
+              onCopyJSON: () {
+                final jsonStr = jsonEncode(_analysis!.toJson());
+                Clipboard.setData(ClipboardData(text: jsonStr));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('JSON copied')),
+                );
+              },
+              onDownloadJSON: () {
+                final jsonStr = jsonEncode(_analysis!.toJson());
+                Clipboard.setData(ClipboardData(text: jsonStr)); // simple fallback
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Downloaded (copied for now)')),
+                );
+              },
             ),
 
           const SizedBox(height: 100),
@@ -161,99 +164,43 @@ class _ScanTabState extends State<ScanTab> {
   Widget _buildHeader() {
     return Column(
       children: [
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, color: AppColors.primaryBlue, size: 30),
+            Icon(Icons.search, color: AppColors.primaryBlue, size: 32),
             const SizedBox(width: 8),
             ShaderMask(
-              shaderCallback: (b) =>
-                  AppColors.blueCyanGradient.createShader(b),
+              shaderCallback: (bounds) =>
+                  const LinearGradient(colors: [AppColors.primaryBlue, AppColors.primaryPurple]).createShader(bounds),
               child: const Text(
                 'Scan Analysis',
-                style: TextStyle(
-                  color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Text(
-          'Detect tactics, motives & safe responses',
-          style: TextStyle(color: AppColors.textGray400),
+          'Detect manipulation signals in one message',
+          style: TextStyle(color: AppColors.textGray400, fontSize: 14),
         ),
       ],
     );
   }
 
-  Widget _buildRelationshipToneRow() {
-    return Row(
-      children: [
-        Expanded(child: _dropdown(
-          label: 'Relationship',
-          value: _selectedRelationship,
-          items: const [
-            'Partner','Ex','Date','Friend','Coworker','Family','Roommate','Stranger'
-          ],
-          onChanged: (v) => setState(() => _selectedRelationship = v!),
-        )),
-        const SizedBox(width: 12),
-        Expanded(child: _dropdown(
-          label: 'Tone',
-          value: _selectedTone,
-          items: const ['savage','soft','clinical'],
-          onChanged: (v) => setState(() => _selectedTone = v!),
-        )),
-      ],
-    );
-  }
-
-  Widget _buildContentTypeSelector() {
-    final types = const [
-      {'id': 'dm', 'label': '💬 DM'},
-      {'id': 'bio', 'label': '📝 Bio'},
-      {'id': 'story', 'label': '📖 Story'},
-      {'id': 'post', 'label': '📱 Post'},
-    ];
-    return Row(
-      children: types.map((t) {
-        final selected = _selectedContentType == t['id'];
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedContentType = t['id']!),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white.withOpacity(0.12) : AppColors.backgroundGray800,
-                  borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
-                  border: Border.all(color: selected ? AppColors.primaryBlue : AppColors.borderGray600),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  t['label']!,
-                  style: TextStyle(
-                    color: selected ? AppColors.primaryBlue : AppColors.textGray400,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildSubjectName() {
+  Widget _buildSubjectNameField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('SUBJECT NAME (OPTIONAL)',
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
+        const SizedBox(height: 12),
         CustomTextField(
           controller: _subjectNameController,
           placeholder: 'Enter the person\'s name...',
@@ -264,20 +211,31 @@ class _ScanTabState extends State<ScanTab> {
     );
   }
 
-  Widget _dropdown({
-    required String label,
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
+  Widget _buildRelationshipSelector() {
+    final relationships = [
+      {'id': 'Partner', 'label': '💕 Partner', 'desc': 'Romantic relationships'},
+      {'id': 'Ex', 'label': '💔 Ex', 'desc': 'Former partners'},
+      {'id': 'Date', 'label': '💘 Date', 'desc': 'Dating situations'},
+      {'id': 'Friend', 'label': '👥 Friend', 'desc': 'Friendships'},
+      {'id': 'Coworker', 'label': '💼 Coworker', 'desc': 'Work relationships'},
+      {'id': 'Family', 'label': '👨‍👩‍👧‍👦 Family', 'desc': 'Family dynamics'},
+      {'id': 'Roommate', 'label': '🏡 Roommate', 'desc': 'Living situations'},
+      {'id': 'Stranger', 'label': '❓ Stranger', 'desc': 'Unknown people'},
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(),
-            style: TextStyle(color: AppColors.textGray400, fontSize: 12, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+        Text('RELATIONSHIP CONTEXT',
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
+        const SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: AppColors.backgroundGray800,
             borderRadius: BorderRadius.circular(AppConstants.mediumRadius),
@@ -285,15 +243,157 @@ class _ScanTabState extends State<ScanTab> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: value,
-              dropdownColor: AppColors.backgroundGray800,
+              value: _selectedRelationship,
               isExpanded: true,
-              style: const TextStyle(color: Colors.white),
-              items: items.map((v) => DropdownMenuItem(
-                value: v, child: Text(v))).toList(),
-              onChanged: onChanged,
+              dropdownColor: AppColors.backgroundGray800,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              items: relationships
+                  .map((rel) => DropdownMenuItem<String>(
+                        value: rel['id']!,
+                        child: Row(
+                          children: [
+                            Text(rel['label']!),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(rel['desc']!,
+                                  style: TextStyle(color: AppColors.textGray400, fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedRelationship = v ?? _selectedRelationship),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToneSelector() {
+    final tones = [
+      {'id': 'savage', 'label': '🔥 Savage', 'desc': 'No mercy'},
+      {'id': 'soft', 'label': '🕊️ Soft', 'desc': 'Gentle approach'},
+      {'id': 'clinical', 'label': '🧠 Clinical', 'desc': 'Analytical & precise'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ANALYSIS TONE',
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
+        const SizedBox(height: 12),
+        Row(
+          children: tones
+              .map(
+                (tone) => Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: CustomOutlinedButton(
+                      text: '',
+                      isSelected: _selectedTone == tone['id'],
+                      selectedColor: AppColors.primaryPink,
+                      onPressed: () => setState(() => _selectedTone = tone['id']!),
+                      child: Column(
+                        children: [
+                          Text(
+                            tone['label']!,
+                            style: TextStyle(
+                              color: _selectedTone == tone['id']
+                                  ? AppColors.primaryPink
+                                  : AppColors.textGray400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tone['desc']!,
+                            style: TextStyle(
+                              color: (_selectedTone == tone['id']
+                                      ? AppColors.primaryPink
+                                      : AppColors.textGray400)
+                                  .withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentTypeSelector() {
+    final contentTypes = [
+      {'id': 'dm', 'label': 'Direct Message', 'desc': 'One-to-one chats'},
+      {'id': 'bio', 'label': 'Bio', 'desc': 'Social bio'},
+      {'id': 'story', 'label': 'Story', 'desc': 'Stories'},
+      {'id': 'post', 'label': 'Post', 'desc': 'Public post'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('CONTENT TYPE',
+            style: TextStyle(
+              color: AppColors.textGray400,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            )),
+        const SizedBox(height: 12),
+        Row(
+          children: contentTypes
+              .map(
+                (type) => Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: CustomOutlinedButton(
+                      text: '',
+                      isSelected: _selectedContentType == type['id'],
+                      selectedColor: AppColors.primaryBlue,
+                      onPressed: () => setState(() => _selectedContentType = type['id']!),
+                      child: Column(
+                        children: [
+                          Text(
+                            type['label']!,
+                            style: TextStyle(
+                              color: _selectedContentType == type['id']
+                                  ? AppColors.primaryBlue
+                                  : AppColors.textGray400,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            type['desc']!,
+                            style: TextStyle(
+                              color: (_selectedContentType == type['id']
+                                      ? AppColors.primaryBlue
+                                      : AppColors.textGray400)
+                                  .withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
         ),
       ],
     );
